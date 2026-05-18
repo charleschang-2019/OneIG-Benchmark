@@ -1,0 +1,39 @@
+# OneIG-Bench default evaluation config.
+#
+# Override any field from the command line, e.g.:
+#   python -m oneig_bench run --config configs/default.yaml \
+#       --mode ZH --image-dirname /data/imgs --models gpt-4o:2,2 imagen4:1,4
+
+mode: EN                       # EN | ZH
+image_dirname: ""              # required: root folder containing <class>/<model>/<id>.webp
+results_dir: results
+
+models:
+  - name: gpt-4o
+    image_grid: "2,2"
+  # - name: imagen4
+  #   image_grid: "1,4"
+
+dimensions:
+  - alignment
+  - diversity
+  - reasoning
+  - style
+  - text
+
+# GPUs to run on. Examples:
+#   devices: [0]            # single GPU (default)
+#   devices: [0, 1, 2, 3]   # 4-way data parallel
+#   devices: "auto"         # use every visible CUDA device
+devices: [0]
+
+# Per-dimension class_items overrides. Omit a key to use defaults
+# (see DEFAULT_CLASS_ITEMS in oneig_bench/config.py).
+class_items:
+  # alignment: [anime, human, object]            # ZH may add "multilingualism"
+  # diversity: [anime, human, object, text, reasoning]
+
+aggregation:
+  emit_csv: true
+  emit_xlsx: true
+  include_fine_grained: true

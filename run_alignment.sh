@@ -1,40 +1,30 @@
 #!/bin/bash
-
-# start_time
+set -e
 start_time=$(date +%s)
+. "$(dirname "$0")/scripts/_common.sh"
 
-# mode (EN/ZH)
-MODE=EN
+MODE=${MODE:-EN}
+IMAGE_DIR=${IMAGE_DIR:-""}
+MODEL_NAMES=(${MODEL_NAMES[@]:-"gpt-4o" "imagen4"})
+IMAGE_GRIDS=(${IMAGE_GRIDS[@]:-"2,2" "1,4"})
+DEVICES=(${DEVICES[@]:-0})
 
-# image_root_dir
-IMAGE_DIR=""
-
-# model list
-MODEL_NAMES=("gpt-4o" "imagen4")
-# model_names=("gpt-4o" "imagen4")
-
-# image grid
-# IMAGE_GRIDS=("2,2")
-IMAGE_GRIDS=("2,2" "1,4")
-
-pip install transformers==4.50.0
-
-# Alignment Score
+if [ -n "$INSTALL_TRANSFORMERS" ]; then
+    pip install transformers==4.50.0
+fi
 
 echo "It's alignment time."
+$OIB_PY evaluate alignment \
+    --mode "$MODE" \
+    --image-dirname "$IMAGE_DIR" \
+    --models "${MODEL_NAMES[@]}" \
+    --image-grids "${IMAGE_GRIDS[@]}" \
+    --devices "${DEVICES[@]}" \
+    --class-items anime human object
 
-python -m scripts.alignment.alignment_score \
-  --mode "$MODE" \
-  --image_dirname "$IMAGE_DIR" \
-  --model_names "${MODEL_NAMES[@]}" \
-  --image_grid "${IMAGE_GRID[@]}" \
-  --class_items "anime" "human" "object" \
-
-# In ZH mode, the class_items list can be extended to include "multilingualism".
+# In ZH mode the class_items list can be extended to include "multilingualism".
 
 rm -rf tmp_*
-# end_time
 end_time=$(date +%s)
 duration=$((end_time - start_time))
-
-echo "✅ All evaluations finished in $duration seconds."
+echo "✅ Alignment finished in $duration seconds."

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oneig-bench"
+version = "0.2.0"
+description = "OneIG-Bench: Omni-dimensional Nuanced Evaluation for Image Generation"
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    "pandas",
+    "megfile",
+    "pyyaml",
+    "openpyxl",
+    "tqdm",
+    "rich",
+    "Pillow",
+    "numpy",
+]
+
+[project.scripts]
+oneig-bench = "oneig_bench.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

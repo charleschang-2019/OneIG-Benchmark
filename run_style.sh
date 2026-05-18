@@ -1,37 +1,27 @@
 #!/bin/bash
-
-# start_time
+set -e
 start_time=$(date +%s)
+. "$(dirname "$0")/scripts/_common.sh"
 
-# mode (EN/ZH)
-MODE=EN
+MODE=${MODE:-EN}
+IMAGE_DIR=${IMAGE_DIR:-""}
+MODEL_NAMES=(${MODEL_NAMES[@]:-"doubao"})
+IMAGE_GRIDS=(${IMAGE_GRIDS[@]:-"2,2"})
+DEVICES=(${DEVICES[@]:-0})
 
-# image_root_dir
-IMAGE_DIR=""
-
-# model list
-MODEL_NAMES=("doubao")
-# model_names=("gpt-4o" "imagen4")
-
-# image grid
-IMAGE_GRIDS=("2,2")
-# IMAGE_GRIDS=("2,2" "1,4")
-
-pip install transformers==4.50.0
-
-# Style Score
+if [ -n "$INSTALL_TRANSFORMERS" ]; then
+    pip install transformers==4.50.0
+fi
 
 echo "It's style time."
-
-python -m scripts.style.style_score \
-  --mode "$MODE" \
-  --image_dirname "$IMAGE_DIR/anime" \
-  --model_names "${MODEL_NAMES[@]}" \
-  --image_grid "${IMAGE_GRID[@]}" \
+$OIB_PY evaluate style \
+    --mode "$MODE" \
+    --image-dirname "$IMAGE_DIR/anime" \
+    --models "${MODEL_NAMES[@]}" \
+    --image-grids "${IMAGE_GRIDS[@]}" \
+    --devices "${DEVICES[@]}"
 
 rm -rf tmp_*
-# end_time
 end_time=$(date +%s)
 duration=$((end_time - start_time))
-
-echo "✅ All evaluations finished in $duration seconds."
+echo "✅ Style finished in $duration seconds."
