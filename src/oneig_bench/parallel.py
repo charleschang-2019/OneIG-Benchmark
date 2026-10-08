@@ -1,20 +1,20 @@
 """Data-parallel dispatch across GPUs.
 
 Evaluators construct a flat list of work items (one per prompt, or one per
-(class, prompt) pair) and call :func:`dispatch`. With a single device the
-caller's worker function runs in-process; with multiple devices the items
-are split round-robin and each shard is processed by a subprocess that
+(class, prompt) pair) and call :func:`dispatch`. Items
+are split round-robin and each shard is processed by a fresh subprocess that
 pins ``CUDA_VISIBLE_DEVICES`` to a single GPU. Results are collected back
 in the original item order.
 
 Worker functions must be importable by qualified name (``module:func``) so
-``torch.multiprocessing.spawn`` can pickle them. Each worker receives a
+the spawn context can import them. Each worker receives a
 list of (index, item) pairs plus the common kwargs dict, and must return a
 list of (index, value) pairs.
 """
 from __future__ import annotations
 
 import importlib
+import multiprocessing as mp
 import os
 import pickle
 import sys
@@ -49,7 +49,7 @@ def _worker_entry(
     rank: int,
     *,
     qualname: str,
-    device: int,
+    device: str,
     shard_path: str,
     common_path: str,
     out_path: str,
@@ -74,6 +74,28 @@ def _worker_entry(
         raise
 
 
+def _resolve_devices(devices: list[int]) -> list[str]:
+    """Map visible ordinals to CUDA mask tokens without querying CUDA."""
+    devices = devices or [0]
+    if any(not isinstance(d, int) or isinstance(d, bool) or d < 0 for d in devices):
+        raise ValueError("devices must be non-negative integer indices")
+    if len(set(devices)) != len(devices):
+        raise ValueError("devices must not contain duplicate indices")
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is None:
+        return [str(d) for d in devices]
+    tokens = [token.strip() for token in visible.split(",")]
+    # CUDA stops enumerating at an invalid ordinal. Do not silently turn a
+    # disabled/invalid mask into access to GPUs outside the inherited mask.
+    for token in tokens:
+        if not token or (not token.startswith(("GPU-", "MIG-")) and
+                         (not token.isdecimal())):
+            raise ValueError("CUDA_VISIBLE_DEVICES must contain GPU ordinals or UUIDs")
+    if any(d >= len(tokens) for d in devices):
+        raise ValueError(f"devices {devices} exceed CUDA_VISIBLE_DEVICES={visible!r}")
+    return [tokens[d] for d in devices]
+
+
 def dispatch(
     worker_qualname: str,
     items: list[Any],
@@ -85,32 +107,22 @@ def dispatch(
     """Distribute ``items`` across ``devices`` and merge results.
 
     ``worker_qualname`` is ``"oneig_bench.evaluators.text:_run_shard"`` etc.
+    Device indices are ordinals in the inherited CUDA_VISIBLE_DEVICES list;
+    when unset they are CUDA physical ordinals. Every worker sees only its
+    selected GPU as cuda:0. The parent environment is never modified.
     The worker must accept ``(shard, common) -> [(idx, value), ...]``.
     Returns a list aligned with ``items``; entries for items that the
     worker skipped (didn't emit) are ``None``.
     """
     if not items:
         return []
-    if not devices:
-        devices = [0]
+    # Resolve against the parent's original mask before trimming idle workers.
+    resolved_devices = _resolve_devices(devices)
+    n = min(len(resolved_devices), len(items))
+    devices = resolved_devices[:n]
 
-    n = min(len(devices), len(items))
-    devices = devices[:n]
-
-    # Single-device fast path: run in this process.
-    if n == 1:
-        os.environ.setdefault("CUDA_VISIBLE_DEVICES", str(devices[0]))
-        fn = _resolve(worker_qualname)
-        shard = [(i, item) for i, item in enumerate(items)]
-        flat = fn(shard, common)
-        merged: list[Any] = [None] * len(items)
-        for idx, value in flat:
-            merged[idx] = value
-        return merged
-
-    # Multi-device path: torch.multiprocessing.spawn.
-    import torch.multiprocessing as mp
-
+    # Even one device uses spawn: changing the parent's mask cannot retarget
+    # CUDA after initialization and would leak into subsequent dispatch calls.
     shards = partition(items, n)
     tmp_dir = Path(tempfile.mkdtemp(prefix="oib_dispatch_", dir=str(tmp_root) if tmp_root else None))
     common_path = tmp_dir / "common.pkl"
