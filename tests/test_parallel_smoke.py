@@ -28,6 +28,9 @@ def slow_double(shard, common):
 
 
 def main() -> None:
+    # This smoke test intentionally uses unmasked CUDA physical ordinals.
+    os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     # Round-robin partition unit test
     parts = partition(list(range(7)), 3)
     assert [len(p) for p in parts] == [3, 2, 2], parts
@@ -36,13 +39,13 @@ def main() -> None:
     items = list(range(8))
 
     print("\n-- single device path (devices=[0]) --")
-    res = dispatch("tests.test_parallel_smoke:slow_double", items, {}, devices=[0])
+    res = dispatch("test_parallel_smoke:slow_double", items, {}, devices=[0])
     print(res)
     assert [r["value"] for r in res] == [x * 2 for x in items]
 
     print("\n-- multi device path (devices=[0,1,2,3], no real GPU) --")
     res = dispatch(
-        "tests.test_parallel_smoke:slow_double", items, {}, devices=[0, 1, 2, 3]
+        "test_parallel_smoke:slow_double", items, {}, devices=[0, 1, 2, 3]
     )
     for r in res:
         print(r)

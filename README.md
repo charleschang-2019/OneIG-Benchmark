@@ -197,9 +197,23 @@ Pass `--devices` (or set `DEVICES=(...)` in the shell wrappers / `devices:` in Y
 
 | Spec | Effect |
 | --- | --- |
-| `--devices 0` (default) | Single GPU, runs in the parent process. |
-| `--devices 0 1 2 3` or `--devices 0,1,2,3` | Data-parallel across 4 GPUs — each evaluator partitions its prompts round-robin and `torch.multiprocessing.spawn`s one worker per GPU. Each worker pins `CUDA_VISIBLE_DEVICES` to a single device and loads its own copy of the relevant model. |
+| `--devices 0` (default) | Single GPU, runs in a fresh worker process. |
+| `--devices 0 1 2 3` or `--devices 0,1,2,3` | Data-parallel across 4 GPUs — each evaluator partitions its prompts round-robin and spawns one fresh worker per GPU. Each worker pins `CUDA_VISIBLE_DEVICES` to a single device and loads its own copy of the relevant model. |
 | `--devices auto` | Same as the list above, but inferred from `torch.cuda.device_count()`. |
+
+Device numbers are **indices in the current visible GPU list**. An existing
+`CUDA_VISIBLE_DEVICES` defines that list; `--devices` selects from it rather
+than overriding it. For example, `CUDA_VISIBLE_DEVICES=3,5` with `--devices 1`
+selects physical GPU 5; `--devices 1 0` assigns workers to GPUs 5 and 3.
+Without that environment variable, numbers are CUDA physical ordinals (as
+ordered by CUDA, including `CUDA_DEVICE_ORDER`). UUID and MIG mask tokens are
+preserved. Each worker sees its selected GPU as `cuda:0`. Empty/disabled masks,
+negative or duplicate indices, and indices outside an inherited mask are rejected.
+The parent environment is unchanged, including across repeated evaluations.
+Single GPU runs also use a fresh process so prior CUDA initialization in the
+parent cannot defeat selection. Workers must remain importable by module name;
+programmatic callers should invoke dispatch under an `if __name__ == "__main__":`
+guard, as required by Python's spawn context.
 
 All five evaluators honour the same flag, so `bash run_overall.sh` with `DEVICES=(0 1 2 3)` will parallelise alignment, diversity, reasoning, style, and text end-to-end. Per-GPU memory footprint is the same as single-GPU because each worker only holds one model copy.
 
